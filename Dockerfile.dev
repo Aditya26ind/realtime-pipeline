@@ -1,0 +1,41 @@
+# Development Dockerfile for Real-time Data Pipeline
+FROM bitnami/spark:3.2.0
+
+# Switch to root to install packages
+USER root
+
+# Install Python dependencies and development tools
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    curl \
+    vim \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages
+COPY requirements.txt /tmp/requirements.txt
+RUN pip3 install -r /tmp/requirements.txt
+
+# Create app directory
+WORKDIR /app
+
+# Install additional Spark dependencies for Kafka
+RUN curl -O https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.2.0/spark-sql-kafka-0-10_2.12-3.2.0.jar \
+    && curl -O https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/2.8.1/kafka-clients-2.8.1.jar \
+    && curl -O https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.2.0/spark-token-provider-kafka-0-10_2.12-3.2.0.jar \
+    && curl -O https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar \
+    && mv *.jar /opt/bitnami/spark/jars/
+
+# Set environment variables
+ENV PYTHONPATH="/app:$PYTHONPATH"
+ENV SPARK_HOME="/opt/bitnami/spark"
+ENV PATH="$SPARK_HOME/bin:$PATH"
+
+# Create directories for output and checkpoints
+RUN mkdir -p /app/output/parquet/iot /app/checkpoints/iot
+
+# Switch back to spark user
+USER 1001
+
+# Keep container running for development
+CMD ["tail", "-f", "/dev/null"]

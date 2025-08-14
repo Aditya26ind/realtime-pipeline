@@ -1,0 +1,47 @@
+FROM bitnami/spark:3.2.0
+
+USER root
+
+ENV SPARK_HOME=/opt/bitnami/spark
+ENV PATH="$SPARK_HOME/bin:$PATH"
+
+# Install minimal tools and Python deps
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python dependencies
+COPY requirements.txt /tmp/requirements.txt
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
+
+# Add Kafka + Spark integration JARs (pin versions)
+WORKDIR /tmp/jars
+RUN curl -fsSLO https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.2.0/spark-sql-kafka-0-10_2.12-3.2.0.jar \
+ && curl -fsSLO https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.2.0/spark-token-provider-kafka-0-10_2.12-3.2.0.jar \
+ && curl -fsSLO https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/2.8.1/kafka-clients-2.8.1.jar \
+ # Optional: S3 support (uncomment if writing to S3 in prod)
+ && true
+# && curl -fsSLO https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.2.0/hadoop-aws-3.2.0.jar \
+# && curl -fsSLO https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.11.901/aws-java-sdk-bundle-1.11.901.jar \
+RUN mv /tmp/jars/*.jar $SPARK_HOME/jars/ || true
+
+# Application code
+WORKDIR /app
+COPY spark_jobs/ ./spark_jobs/
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh \
+ && mkdir -p /app/output/parquet/iot /app/checkpoints/iot
+
+# Defaults can be overridden at runtime
+ENV SPARK_MASTER_URL=spark://spark-master:7077
+ENV KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+ENV KAFKA_TOPIC=iot_events
+ENV OUTPUT_PATH=output/parquet/iot
+ENV CHECKPOINT_PATH=checkpoints/iot
+ENV SPARK_SUBMIT_ARGS=
+
+USER 1001
+
+ENTRYPOINT ["bash", "/app/entrypoint.sh"]

@@ -89,12 +89,86 @@ services:
     networks:
       - kafka-network
 
+  # Spark Master
+  spark-master:
+    image: bitnami/spark:3.2.0
+    container_name: realtime-spark-master
+    hostname: spark-master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    ports:
+      - "8083:8080"  # Spark Master UI
+      - "7077:7077"  # Spark Master port
+    volumes:
+      - spark-logs:/opt/bitnami/spark/logs
+    networks:
+      - kafka-network
+
+  # Spark Worker
+  spark-worker:
+    image: bitnami/spark:3.2.0
+    container_name: realtime-spark-worker
+    hostname: spark-worker
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    ports:
+      - "8082:8081"  # Spark Worker UI
+    volumes:
+      - spark-logs:/opt/bitnami/spark/logs
+    networks:
+      - kafka-network
+
+  # Development container for running Spark jobs
+  spark-dev:
+    build:
+      context: ../
+      dockerfile: Dockerfile.dev
+    container_name: realtime-spark-dev
+    depends_on:
+      - spark-master
+      - kafka
+    environment:
+      - SPARK_MODE=client
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ../:/app  # Mount entire project for live code changes
+      - spark-checkpoints:/app/checkpoints  # Persistent checkpoints
+      - spark-output:/app/output  # Persistent output
+      - /app/.git  # Exclude .git to avoid conflicts
+    working_dir: /app
+    ports:
+      - "4040:4040"  # Spark Application UI
+      - "4041:4041"  # Additional Spark UI port
+    command: tail -f /dev/null  # Keep container running
+    networks:
+      - kafka-network
+
 volumes:
   zookeeper-data:
     driver: local
   zookeeper-logs:
     driver: local
   kafka-data:
+    driver: local
+  spark-logs:
+    driver: local
+  spark-checkpoints:
+    driver: local
+  spark-output:
     driver: local
 
 networks:
